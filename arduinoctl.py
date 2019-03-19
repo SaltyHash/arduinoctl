@@ -1,9 +1,16 @@
-"""Control an Arduino."""
+"""
+Control an Arduino.
+
+TODO:
+- Does using even a single servo "break" the normal PWM functionality for other pins on the same timer?
+"""
 
 from abc import ABC, abstractmethod
 from enum import Enum, IntEnum
+from itertools import islice
+from math import ceil
 from threading import RLock
-from typing import ByteString, Mapping, Optional, Set
+from typing import ByteString, Mapping, Optional, Set, List
 
 import serial
 
@@ -47,6 +54,9 @@ class Arduino(ABC):
         DETACH_SERVO = 0x15
         SET_SERVO_ANGLE = 0x16
         SET_SERVO_TIME = 0x17
+
+        # [start pin] [pin count] --> [ceil(pin_count / 8) bytes]
+        DIGITAL_READ_RANGE = 0x18
 
         ACK = 0xAA
 
@@ -208,6 +218,27 @@ class Arduino(ABC):
             self._write_arduino(Arduino._SerialCommands.DIGITAL_READ, pin)
             return self._read_arduino(1)[0] != 0
 
+    def digital_read_range(self, start_pin: int, pin_count: int) -> List[bool]:
+        self._validate_pin(start_pin)
+        self._validate_range('pin count', pin_count, 0, 256)
+        if pin_count == 0:
+            return []
+
+        with self._conn_lock:
+            self._write_arduino(
+                Arduino._SerialCommands.DIGITAL_READ_RANGE,
+                start_pin,
+                pin_count - 1
+            )
+
+            data = self._read_arduino(ceil(pin_count / 8))
+
+        states = []
+        for byte in data:
+            states += [bool(byte & (1 << bit)) for bit in range(7, -1, -1)]
+
+        return states[:pin_count]
+
     def digital_write(self, pin: int, value: bool) -> None:
         self._validate_pin(pin)
 
@@ -287,8 +318,8 @@ class Arduino(ABC):
                     pin,
 
                     # 2 bytes for frequency_hz
-                    (frequency_hz >> 8) & 0xFF,
-                    frequency_hz & 0xFF
+                    get_byte(frequency_hz, 1),
+                    get_byte(frequency_hz, 0)
                 )
             else:
                 self._write_arduino(
@@ -296,14 +327,14 @@ class Arduino(ABC):
                     pin,
 
                     # 2 bytes for frequency_hz
-                    (frequency_hz >> 8) & 0xFF,
-                    frequency_hz & 0xFF,
+                    get_byte(frequency_hz, 1),
+                    get_byte(frequency_hz, 0),
 
                     # 4 bytes for duration_ms
-                    (duration_ms >> 24) & 0xFF,
-                    (duration_ms >> 16) & 0xFF,
-                    (duration_ms >> 8) & 0xFF,
-                    duration_ms & 0xFF,
+                    get_byte(duration_ms, 3),
+                    get_byte(duration_ms, 2),
+                    get_byte(duration_ms, 1),
+                    get_byte(duration_ms, 0)
                 )
             self._recv_ack()
 
@@ -368,10 +399,13 @@ class Arduino(ABC):
         data = bytearray(byte_cnt)
 
         with self._conn_lock:
-            while len(data) < byte_cnt:
-                chunk_size = min(max_chunk_size, byte_cnt - len(data))
+            i = 0
+            while i < byte_cnt:
+                chunk_size = min(max_chunk_size, byte_cnt - i)
+                print(f'Chunk size = {chunk_size}')
                 self._write_arduino(command, data_pin, clock_pin, chunk_size - 1)
-                data += self._read_arduino(chunk_size)
+                data[i:i + chunk_size] = self._read_arduino(chunk_size)
+                i += chunk_size
 
         return data
 
@@ -384,14 +418,16 @@ class Arduino(ABC):
         max_chunk_size = 256
         command = Arduino._SerialCommands.SHIFT_OUT_MSB_FIRST if msb_first else \
             Arduino._SerialCommands.SHIFT_OUT_LSB_FIRST
+        data_iter = iter(data)
 
         with self._conn_lock:
-            bytes_sent = 0
-            while bytes_sent < len(data):
-                chunk = data[bytes_sent:bytes_sent + max_chunk_size]
+            while True:
+                chunk = list(islice(data_iter, max_chunk_size))
+                if not chunk:
+                    break
+
                 self._write_arduino(command, data_pin, clock_pin, len(chunk) - 1, *chunk)
                 self._recv_ack()
-                bytes_sent += len(chunk)
 
     def stop_tone(self, pin: int) -> None:
         self._validate_pin(pin)

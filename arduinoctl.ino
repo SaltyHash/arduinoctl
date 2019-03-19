@@ -38,6 +38,8 @@
 #define COMMAND_SET_SERVO_ANGLE     0x16
 #define COMMAND_SET_SERVO_TIME      0x17
 
+#define COMMAND_DIGITAL_READ_RANGE  0x18
+
 #define COMMAND_ACK 0xAA
 
 
@@ -106,6 +108,20 @@ void loop() {
             write_ack();
             break;
 
+        // Shift in/out
+        case COMMAND_SHIFT_IN_MSB_FIRST:
+            command_shift_in(MSBFIRST);
+            break;
+        case COMMAND_SHIFT_IN_LSB_FIRST:
+            command_shift_in(LSBFIRST);
+            break;
+        case COMMAND_SHIFT_OUT_MSB_FIRST:
+            command_shift_out(MSBFIRST);
+            break;
+        case COMMAND_SHIFT_OUT_LSB_FIRST:
+            command_shift_out(LSBFIRST);
+            break;
+
         // Servos
         case COMMAND_ATTACH_SERVO:
             command_attach_servo();
@@ -119,6 +135,11 @@ void loop() {
             break;
         case COMMAND_SET_SERVO_TIME:
             command_set_servo_time();
+            break;
+
+        // Extended functionality
+        case COMMAND_DIGITAL_READ_RANGE:
+            command_digital_read_range();
             break;
     }
 }
@@ -160,6 +181,38 @@ void command_play_tone_timed() {
     write_ack();
 }
 
+void command_shift_in(const int bit_order) {
+    // TODO: Set pins as inputs/outputs?
+    const int data_pin  = read_byte();
+    const int clock_pin = read_byte();
+    const int byte_cnt  = read_byte() + 1;
+
+    // Send back each byte as it comes in
+    for (int i = 0; i < byte_cnt; i++) {
+        write_byte(shiftIn(data_pin, clock_pin, bit_order));
+    }
+}
+
+void command_shift_out(const int bit_order) {
+    // TODO: Set pins as outputs?
+    const int data_pin  = read_byte();
+    const int clock_pin = read_byte();
+    const int byte_cnt  = read_byte() + 1;
+
+    // Receive all the data first, to prevent buffer overrun
+    byte data[byte_cnt] = {};
+    for (int i = 0; i < byte_cnt; i++) {
+        data[i] = read_byte();
+    }
+
+    // Send all the data out
+    for (int i = 0; i < byte_cnt; i++) {
+        shiftOut(data_pin, clock_pin, bit_order, data[i]);
+    }
+
+    write_ack();
+}
+
 void command_attach_servo() {
     const int channel = read_byte();
     const int pin     = read_byte();
@@ -189,6 +242,27 @@ void command_set_servo_time() {
     SERVOS[channel].writeMicroseconds(time_us);
 
     write_ack();
+}
+
+void command_digital_read_range() {
+    const int start_pin = read_byte();
+    const int pin_count = read_byte() + 1;
+    const int stop_pin  = start_pin + pin_count - 1;
+    
+    byte states;
+    for (int i = 0; i < pin_count; i++) {
+//    for (int pin = start_pin; pin <= stop_pin; pin++) {
+        const int pin = start_pin + i;
+        const byte pin_index = i % 8;
+        
+        if (pin_index == 0)
+            states = 0;
+
+        states |= digitalRead(pin) << (7 - pin_index);
+        
+        if (pin_index == 7 || pin == stop_pin)
+            write_byte(states);
+    }
 }
 
 /* Reads a single byte from Serial and returns it, blocking until a byte can be read. */
