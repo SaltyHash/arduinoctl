@@ -37,9 +37,11 @@ with ArduinoUno('/dev/ttyACM0') as arduino:
     
     # Attach a servo on pin 15 to servo channel 0 so it can be controlled
     arduino.attach_servo(0, 15)
-    arduino.set_servo_angle(90)
+    
+    # Set servo on channel 0 to 90 degrees, and then 180 degrees
+    arduino.set_servo_angle(0, 90)
     ...
-    arduino.set_servo_angle(180)
+    arduino.set_servo_angle(0, 180)
     
 # The serial connection to the Arduino is automatically closed when exiting the `with` block
 ```
