@@ -122,6 +122,34 @@ void loop() {
             command_shift_out(LSBFIRST);
             break;
 
+        // Analog references
+        case COMMAND_SET_AREF_DEFAULT:
+            analogReference(DEFAULT);
+            write_ack();
+            break;
+#ifdef INTERNAL
+        case COMMAND_SET_AREF_INTERNAL:
+            analogReference(INTERNAL);
+            write_ack();
+            break;
+#endif
+#ifdef INTERNAL1V1
+        case COMMAND_SET_AREF_1V1:
+            analogReference(INTERNAL1V1);
+            write_ack();
+            break;
+#endif
+#ifdef INTERNAL2V56
+        case COMMAND_SET_AREF_2V56:
+            analogReference(INTERNAL2V56);
+            write_ack();
+            break;
+#endif
+        case COMMAND_SET_AREF_EXTERNAL:
+            analogReference(EXTERNAL);
+            write_ack();
+            break;
+
         // Servos
         case COMMAND_ATTACH_SERVO:
             command_attach_servo();
