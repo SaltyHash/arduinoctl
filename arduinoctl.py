@@ -21,7 +21,6 @@ def get_byte(value: int, byte: int) -> int:
 
 class Arduino(ABC):
     BAUD_RATES = (300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600, 115200)
-    SERVO_CHANNELS = 48
 
     class _SerialCommands(IntEnum):
         SET_PIN_MODE_OUTPUT = 0x00
@@ -222,6 +221,7 @@ class Arduino(ABC):
         self._validate_pin(start_pin)
         self._validate_range('pin count', pin_count, 0, 256)
         if pin_count == 0:
+            # Weird, but okay
             return []
 
         with self._conn_lock:
