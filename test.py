@@ -1,7 +1,7 @@
 import unittest
 from random import randint, seed
 
-from arduinoctl import Arduino, ArduinoUno
+from arduinoctl import ArduinoUno, PinMode, AnalogReference
 
 seed()
 
@@ -12,11 +12,12 @@ def randbool():
 
 
 class TestArduinoctl(unittest.TestCase):
+    ARDUINO_CLASS = ArduinoUno
     ARDUINO_TTY = '/dev/ttyACM0'
     DEBUG = False
 
     def setUp(self):
-        self.arduino = ArduinoUno(self.ARDUINO_TTY, timeout=3)
+        self.arduino = self.ARDUINO_CLASS(self.ARDUINO_TTY, timeout=3)
         self.arduino.debug = self.DEBUG
         self.arduino.reset()
 
@@ -25,14 +26,14 @@ class TestArduinoctl(unittest.TestCase):
         self.arduino.close()
 
     def test_shift_in(self):
-        data_pin, clock_pin = 7, 9
+        data_pin, clock_pin = 9, 10
         msb_first = randbool()
         byte_cnt = 1024
 
-        self.arduino.set_pin_mode(data_pin, self.arduino.PinMode.OUTPUT)
+        self.arduino.set_pin_mode(data_pin, PinMode.OUTPUT)
         self.arduino.digital_write(data_pin, False)
 
-        self.arduino.set_pin_mode(clock_pin, self.arduino.PinMode.OUTPUT)
+        self.arduino.set_pin_mode(clock_pin, PinMode.OUTPUT)
 
         data = self.arduino.shift_in(data_pin, clock_pin, msb_first, byte_cnt)
         self.assertEqual(len(data), byte_cnt, 'Received a different number of bytes than requested.')
@@ -44,8 +45,8 @@ class TestArduinoctl(unittest.TestCase):
 
         data = bytes(randint(0, 255) for _ in range(byte_cnt))
 
-        self.arduino.set_pin_mode(data_pin, self.arduino.PinMode.OUTPUT)
-        self.arduino.set_pin_mode(clock_pin, self.arduino.PinMode.OUTPUT)
+        self.arduino.set_pin_mode(data_pin, PinMode.OUTPUT)
+        self.arduino.set_pin_mode(clock_pin, PinMode.OUTPUT)
 
         self.arduino.shift_out(9, 10, msb_first, data)
 
@@ -53,8 +54,8 @@ class TestArduinoctl(unittest.TestCase):
         max_voltage = 5.0
 
         for (ref_source, ref_voltage) in (
-                (Arduino.AnalogReference.EXTERNAL, max_voltage),
-                (Arduino.AnalogReference.INTERNAL, None)
+                (AnalogReference.EXTERNAL, max_voltage),
+                (AnalogReference.INTERNAL, None)
         ):
             self.arduino.set_analog_reference(ref_source, ref_voltage)
 
@@ -73,7 +74,7 @@ class TestArduinoctl(unittest.TestCase):
 
         # Set pins to be outputs
         for pin in range(start_pin, start_pin + pin_count):
-            self.arduino.set_pin_mode(pin, Arduino.PinMode.OUTPUT)
+            self.arduino.set_pin_mode(pin, PinMode.OUTPUT)
 
         # Set pin states
         self.arduino.digital_write_range(start_pin, states)

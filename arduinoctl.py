@@ -10,13 +10,40 @@ from enum import Enum, IntEnum
 from itertools import islice
 from math import ceil
 from threading import RLock
-from typing import ByteString, Mapping, Optional, Set, List, Collection
+from typing import ByteString, Collection, List, Mapping, Optional, Set
 
 import serial
 
 
 def get_byte(value: int, byte: int) -> int:
     return (value >> (8 * byte)) & 0xFF
+
+
+class AnalogReference(Enum):
+    """
+    Arduino AVR Boards (Uno, Mega, etc.):
+
+    - DEFAULT: The default analog reference of 5 volts (on 5V Arduino boards) or 3.3 volts (on 3.3V Arduino boards).
+    - INTERNAL: A built-in reference, equal to 1.1 volts on the ATmega168 or ATmega328P and 2.56 volts on the
+                ATmega8 (not available on the Arduino Mega).
+    - INTERNAL_1V1: A built-in 1.1V reference (Arduino Mega only).
+    - INTERNAL_2V56: A built-in 2.56V reference (Arduino Mega only).
+    - EXTERNAL: The voltage applied to the AREF pin (0 to 5V only) is used as the reference.
+
+    Documentation: https://www.arduino.cc/reference/en/language/functions/analog-io/analogreference/
+    """
+
+    DEFAULT = 0
+    INTERNAL = 1
+    INTERNAL_1V1 = 2
+    INTERNAL_2V56 = 3
+    EXTERNAL = 4
+
+
+class PinMode(Enum):
+    OUTPUT = 0
+    INPUT = 1
+    INPUT_PULLUP = 2
 
 
 class Arduino(ABC):
@@ -63,31 +90,6 @@ class Arduino(ABC):
         RESET = 0x1A
 
         ACK = 0xAA
-
-    class AnalogReference(Enum):
-        """
-        Arduino AVR Boards (Uno, Mega, etc.):
-
-        - DEFAULT: The default analog reference of 5 volts (on 5V Arduino boards) or 3.3 volts (on 3.3V Arduino boards).
-        - INTERNAL: A built-in reference, equal to 1.1 volts on the ATmega168 or ATmega328P and 2.56 volts on the
-                    ATmega8 (not available on the Arduino Mega).
-        - INTERNAL_1V1: A built-in 1.1V reference (Arduino Mega only).
-        - INTERNAL_2V56: A built-in 2.56V reference (Arduino Mega only).
-        - EXTERNAL: The voltage applied to the AREF pin (0 to 5V only) is used as the reference.
-
-        Documentation: https://www.arduino.cc/reference/en/language/functions/analog-io/analogreference/
-        """
-
-        DEFAULT = 0
-        INTERNAL = 1
-        INTERNAL_1V1 = 2
-        INTERNAL_2V56 = 3
-        EXTERNAL = 4
-
-    class PinMode(Enum):
-        OUTPUT = 0
-        INPUT = 1
-        INPUT_PULLUP = 2
 
     _ANALOG_REFERENCE_TO_SERIAL_COMMAND = {
         AnalogReference.DEFAULT: _SerialCommands.SET_AREF_DEFAULT,
@@ -145,7 +147,7 @@ class Arduino(ABC):
         self._sync()
 
         self._analog_references = dict(self.allowed_analog_references)
-        self._curr_analog_reference = Arduino.AnalogReference.DEFAULT
+        self._curr_analog_reference = AnalogReference.DEFAULT
 
     def __enter__(self):
         return self
@@ -235,7 +237,7 @@ class Arduino(ABC):
             self._recv_ack()
 
         self._analog_references = dict(self.allowed_analog_references)
-        self._curr_analog_reference = Arduino.AnalogReference.DEFAULT
+        self._curr_analog_reference = AnalogReference.DEFAULT
 
     def digital_read(self, pin: int) -> bool:
         self._validate_pin(pin)
@@ -276,7 +278,7 @@ class Arduino(ABC):
             )
             self._recv_ack()
 
-    def digital_write_range(self, start_pin: int, states: Collection[bool]):
+    def digital_write_range(self, start_pin: int, states: Collection[bool]) -> None:
         self._validate_pin(start_pin)
 
         pin_count = len(states)
@@ -406,7 +408,7 @@ class Arduino(ABC):
             raise ValueError(f'Analog reference {reference.name} is not supported by the {self.name}.')
 
         # Check external reference and voltage
-        references = Arduino.AnalogReference
+        references = AnalogReference
         if reference == references.EXTERNAL:
             # Perform voltage sanity checks
             if voltage is None:
@@ -435,11 +437,11 @@ class Arduino(ABC):
 
         commands = Arduino._SerialCommands
         with self._conn_lock:
-            if mode == Arduino.PinMode.INPUT:
+            if mode == PinMode.INPUT:
                 self._write_arduino(commands.SET_PIN_MODE_INPUT)
-            elif mode == Arduino.PinMode.INPUT_PULLUP:
+            elif mode == PinMode.INPUT_PULLUP:
                 self._write_arduino(commands.SET_PIN_MODE_INPUT_PULLUP)
-            elif mode == Arduino.PinMode.OUTPUT:
+            elif mode == PinMode.OUTPUT:
                 self._write_arduino(commands.SET_PIN_MODE_OUTPUT)
             else:
                 raise ValueError(f'Invalid pin mode {mode}.')
@@ -470,7 +472,10 @@ class Arduino(ABC):
 
         return data
 
-    def shift_out(self, data_pin: int, clock_pin: int, msb_first: bool, data: ByteString) -> None:
+    def shift_out(self, data_pin: int, clock_pin: int, msb_first: bool, data: ByteString) -> ByteString:
+        """
+        :return: The same data that was passed in.
+        """
         self._validate_pin(data_pin)
         self._validate_pin(clock_pin)
         if data_pin == clock_pin:
@@ -489,6 +494,8 @@ class Arduino(ABC):
 
                 self._write_arduino(command, data_pin, clock_pin, len(chunk) - 1, *chunk)
                 self._recv_ack()
+
+        return data
 
     def stop_tone(self, pin: int) -> None:
         self._validate_pin(pin)
@@ -543,12 +550,12 @@ class ArduinoMega2560(Arduino):
         return 14
 
     @property
-    def allowed_analog_references(self) -> Mapping[Arduino.AnalogReference, float]:
+    def allowed_analog_references(self) -> Mapping[AnalogReference, float]:
         return {
-            Arduino.AnalogReference.DEFAULT: 5.0,
-            Arduino.AnalogReference.INTERNAL_1V1: 1.1,
-            Arduino.AnalogReference.INTERNAL_2V56: 2.56,
-            Arduino.AnalogReference.EXTERNAL: None
+            AnalogReference.DEFAULT: 5.0,
+            AnalogReference.INTERNAL_1V1: 1.1,
+            AnalogReference.INTERNAL_2V56: 2.56,
+            AnalogReference.EXTERNAL: None
         }
 
     @property
@@ -570,11 +577,11 @@ class ArduinoMicro(Arduino):
         return 11
 
     @property
-    def allowed_analog_references(self) -> Mapping[Arduino.AnalogReference, float]:
+    def allowed_analog_references(self) -> Mapping[AnalogReference, float]:
         return {
-            Arduino.AnalogReference.DEFAULT: 5.0,
-            Arduino.AnalogReference.INTERNAL: 1.1,
-            Arduino.AnalogReference.EXTERNAL: None
+            AnalogReference.DEFAULT: 5.0,
+            AnalogReference.INTERNAL: 1.1,
+            AnalogReference.EXTERNAL: None
         }
 
     @property
@@ -596,11 +603,11 @@ class ArduinoNano(Arduino):
         return 7
 
     @property
-    def allowed_analog_references(self) -> Mapping[Arduino.AnalogReference, float]:
+    def allowed_analog_references(self) -> Mapping[AnalogReference, float]:
         return {
-            Arduino.AnalogReference.DEFAULT: 5.0,
-            Arduino.AnalogReference.INTERNAL: 1.1,
-            Arduino.AnalogReference.EXTERNAL: None
+            AnalogReference.DEFAULT: 5.0,
+            AnalogReference.INTERNAL: 1.1,
+            AnalogReference.EXTERNAL: None
         }
 
     @property
@@ -622,11 +629,11 @@ class ArduinoUno(Arduino):
         return 5
 
     @property
-    def allowed_analog_references(self) -> Mapping[Arduino.AnalogReference, float]:
+    def allowed_analog_references(self) -> Mapping[AnalogReference, float]:
         return {
-            Arduino.AnalogReference.DEFAULT: 5.0,
-            Arduino.AnalogReference.INTERNAL: 1.1,
-            Arduino.AnalogReference.EXTERNAL: None
+            AnalogReference.DEFAULT: 5.0,
+            AnalogReference.INTERNAL: 1.1,
+            AnalogReference.EXTERNAL: None
         }
 
     @property
