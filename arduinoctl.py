@@ -246,7 +246,7 @@ class Arduino(ABC):
 
     def digital_read_range(self, start_pin: int, pin_count: int) -> List[bool]:
         self._validate_pin(start_pin)
-        self._validate_range('pin count', pin_count, 0, 256)
+        self._validate_pin(start_pin + pin_count - 1)
         if pin_count == 0:
             # Weird, but okay
             return []
@@ -280,6 +280,12 @@ class Arduino(ABC):
         self._validate_pin(start_pin)
 
         pin_count = len(states)
+        # Weird, but okay
+        if pin_count == 0:
+            return
+
+        self._validate_pin(start_pin + pin_count - 1)
+
         self._write_arduino(
             Arduino._SerialCommands.DIGITAL_WRITE_RANGE,
             start_pin,
