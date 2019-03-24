@@ -234,6 +234,9 @@ class Arduino(ABC):
             self._write_arduino(Arduino._SerialCommands.RESET)
             self._recv_ack()
 
+        self._analog_references = dict(self.allowed_analog_references)
+        self._curr_analog_reference = Arduino.AnalogReference.DEFAULT
+
     def digital_read(self, pin: int) -> bool:
         self._validate_pin(pin)
 
