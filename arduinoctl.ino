@@ -33,12 +33,17 @@
 #define COMMAND_SET_AREF_2V56       0x12
 #define COMMAND_SET_AREF_EXTERNAL   0x13
 
+// Extended functions
+
 #define COMMAND_ATTACH_SERVO        0x14
 #define COMMAND_DETACH_SERVO        0x15
 #define COMMAND_SET_SERVO_ANGLE     0x16
 #define COMMAND_SET_SERVO_TIME      0x17
 
 #define COMMAND_DIGITAL_READ_RANGE  0x18
+#define COMMAND_DIGITAL_WRITE_RANGE 0x19
+
+#define COMMAND_RESET               0x1A
 
 #define COMMAND_ACK 0xAA
 
@@ -127,28 +132,30 @@ void loop() {
             analogReference(DEFAULT);
             write_ack();
             break;
-#ifdef INTERNAL
         case COMMAND_SET_AREF_INTERNAL:
+#ifdef INTERNAL
             analogReference(INTERNAL);
+#endif
             write_ack();
             break;
-#endif
-#ifdef INTERNAL1V1
         case COMMAND_SET_AREF_1V1:
+#ifdef INTERNAL1V1
             analogReference(INTERNAL1V1);
+#endif
             write_ack();
             break;
-#endif
-#ifdef INTERNAL2V56
         case COMMAND_SET_AREF_2V56:
+#ifdef INTERNAL2V56
             analogReference(INTERNAL2V56);
+#endif
             write_ack();
             break;
-#endif
         case COMMAND_SET_AREF_EXTERNAL:
             analogReference(EXTERNAL);
             write_ack();
             break;
+
+        // Extended functionality
 
         // Servos
         case COMMAND_ATTACH_SERVO:
@@ -165,9 +172,16 @@ void loop() {
             command_set_servo_time();
             break;
 
-        // Extended functionality
+        // Digital read/write range
         case COMMAND_DIGITAL_READ_RANGE:
             command_digital_read_range();
+            break;
+        case COMMAND_DIGITAL_WRITE_RANGE:
+            command_digital_write_range();
+            break;
+
+        case COMMAND_RESET:
+            command_reset();
             break;
     }
 }
@@ -291,6 +305,46 @@ void command_digital_read_range() {
         if (pin_index == 7 || pin == stop_pin)
             write_byte(states);
     }
+}
+
+void command_digital_write_range() {
+    const int start_pin = read_byte();
+    const int pin_count = read_byte() + 1;
+    const int stop_pin  = start_pin + pin_count - 1;
+    const int byte_cnt  = ((pin_count - 1) / 8) + 1;
+
+    int pin = start_pin;
+    for (int byte_i = 0; byte_i < byte_cnt; byte_i++) {
+        const int data = read_byte();
+
+        for (int bit_index = 7; bit_index >= 0; bit_index--) {
+            digitalWrite(pin, data & (1 << bit_index));
+
+            if (pin == stop_pin)
+                break;
+            pin++;
+        }
+    }
+    
+    write_ack();
+}
+
+void command_reset() {
+    // Reset pins
+    for (int pin = 0; pin < NUM_DIGITAL_PINS; pin++) {
+        pinMode(pin, INPUT);
+        digitalWrite(pin, LOW);
+        noTone(pin);
+    }
+
+    // Reset analog reference
+    analogReference(DEFAULT);
+
+    // Reset servos
+    for (int channel = 0; channel < SERVO_CHANNELS; channel++)
+        SERVOS[channel].detach();
+
+    write_ack();
 }
 
 /* Reads a single byte from Serial and returns it, blocking until a byte can be read. */

@@ -10,7 +10,7 @@ from enum import Enum, IntEnum
 from itertools import islice
 from math import ceil
 from threading import RLock
-from typing import ByteString, Mapping, Optional, Set, List
+from typing import ByteString, Mapping, Optional, Set, List, Collection
 
 import serial
 
@@ -49,6 +49,8 @@ class Arduino(ABC):
         SET_AREF_2V56 = 0x12
         SET_AREF_EXTERNAL = 0x13
 
+        # Extended functions
+
         ATTACH_SERVO = 0x14
         DETACH_SERVO = 0x15
         SET_SERVO_ANGLE = 0x16
@@ -56,6 +58,9 @@ class Arduino(ABC):
 
         # [start pin] [pin count] --> [ceil(pin_count / 8) bytes]
         DIGITAL_READ_RANGE = 0x18
+        DIGITAL_WRITE_RANGE = 0x19
+
+        RESET = 0x1A
 
         ACK = 0xAA
 
@@ -131,6 +136,8 @@ class Arduino(ABC):
         if baud_rate not in self.BAUD_RATES:
             raise ValueError(f'Baud rate {baud_rate} is invalid. Valid baud rates: {self.BAUD_RATES}')
 
+        self.debug = False
+
         self._conn_lock = RLock()
         self._conn = serial.Serial(tty, baud_rate, timeout=timeout)
         self._conn.reset_input_buffer()
@@ -158,6 +165,9 @@ class Arduino(ABC):
             if actual_byte_count != byte_count:
                 self._conn.reset_input_buffer()
                 raise TimeoutError(f'Tried to read {byte_count} bytes, but only got {actual_byte_count}.')
+
+        if self.debug:
+            print(f'Recv {len(data):3}:', ' '.join(hex(datum) for datum in data))
 
         return data
 
@@ -201,6 +211,9 @@ class Arduino(ABC):
             raise ValueError(f'Invalid servo channel {channel}; must be in range [0, {max_channel}].')
 
     def _write_arduino(self, *data: int) -> None:
+        if self.debug:
+            print(f'Send {len(data):3}:', ' '.join(hex(datum) for datum in data))
+
         with self._conn_lock:
             self._conn.write(bytes(data))
             self._conn.flush()
@@ -209,6 +222,17 @@ class Arduino(ABC):
         if self._conn and self._conn.is_open:
             self._conn.close()
             self._conn = None
+
+    def reset(self) -> None:
+        """
+        Resets the Arduino's pins, analog reference, and servo channels to default states.
+
+        This is NOT the same as pressing the RESET button, but it tries to accomplish effectively the same thing.
+        """
+
+        with self._conn_lock:
+            self._write_arduino(Arduino._SerialCommands.RESET)
+            self._recv_ack()
 
     def digital_read(self, pin: int) -> bool:
         self._validate_pin(pin)
@@ -248,6 +272,35 @@ class Arduino(ABC):
                 pin
             )
             self._recv_ack()
+
+    def digital_write_range(self, start_pin: int, states: Collection[bool]):
+        self._validate_pin(start_pin)
+
+        pin_count = len(states)
+        self._write_arduino(
+            Arduino._SerialCommands.DIGITAL_WRITE_RANGE,
+            start_pin,
+            pin_count - 1
+        )
+
+        data = 0
+        for i, state in enumerate(states):
+            bit_index = (7 - i) % 8
+
+            if bit_index == 7:
+                data = 0
+
+            if state:
+                data |= 1 << bit_index
+
+            is_last_bit = i == (pin_count - 1)
+            if bit_index == 0 or is_last_bit:
+                self._write_arduino(data)
+
+                if is_last_bit:
+                    break
+
+        self._recv_ack()
 
     def analog_read(self, channel: int) -> float:
         """
@@ -402,7 +455,6 @@ class Arduino(ABC):
             i = 0
             while i < byte_cnt:
                 chunk_size = min(max_chunk_size, byte_cnt - i)
-                print(f'Chunk size = {chunk_size}')
                 self._write_arduino(command, data_pin, clock_pin, chunk_size - 1)
                 data[i:i + chunk_size] = self._read_arduino(chunk_size)
                 i += chunk_size
