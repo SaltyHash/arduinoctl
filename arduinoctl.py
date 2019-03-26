@@ -13,6 +13,8 @@ from threading import RLock
 from typing import ByteString, Collection, List, Mapping, Optional, Set
 
 import serial
+from serial.tools import list_ports
+from serial.tools.list_ports_common import ListPortInfo
 
 
 def get_byte(value: int, byte: int) -> int:
@@ -131,17 +133,27 @@ class Arduino(ABC):
 
     def __init__(
             self,
-            tty: str,
+            device: str = None,
+            serial_number: str = None,
             baud_rate: int = BAUD_RATES[-1],
             timeout: Optional[float] = None
     ):
+        if not device and not serial_number:
+            raise ValueError('Either device or serial_number must be given.')
+
         if baud_rate not in self.BAUD_RATES:
             raise ValueError(f'Baud rate {baud_rate} is invalid. Valid baud rates: {self.BAUD_RATES}')
+
+        if serial_number:
+            try:
+                device = [port.device for port in list_ports.comports() if port.serial_number == serial_number][0]
+            except IndexError:
+                raise ValueError(f'Could not find port matching serial number {serial_number}.')
 
         self.debug = False
 
         self._conn_lock = RLock()
-        self._conn = serial.Serial(tty, baud_rate, timeout=timeout)
+        self._conn = serial.Serial(device, baud_rate, timeout=timeout)
         self._conn.reset_input_buffer()
         self._conn.reset_output_buffer()
         self._sync()
@@ -219,6 +231,11 @@ class Arduino(ABC):
         with self._conn_lock:
             self._conn.write(bytes(data))
             self._conn.flush()
+
+    @staticmethod
+    def find_ports() -> List[ListPortInfo]:
+        """Returns a list of port info objects that are probably connected to Arduinos."""
+        return [port for port in list_ports.comports() if 'arduino' in port.manufacturer.casefold()]
 
     def close(self) -> None:
         if self._conn and self._conn.is_open:
@@ -663,3 +680,19 @@ class UnexpectedResponseError(ArduinoError):
             self,
             f'Received unexpected response from Arduino (expected: {repr(expected)}; actual: {repr(actual)}).'
         )
+
+
+def main() -> None:
+    print('Searching for Arduinos...\n')
+    ports = Arduino.find_ports()
+
+    if ports:
+        print(f'Found {len(ports)} Arduino(s):')
+        for (i, port) in enumerate(ports, 1):
+            print(f'{i}. tty={repr(port.device)}\tserial_number={repr(port.serial_number)}')
+    else:
+        print('No Arduinos found :(')
+
+
+if __name__ == '__main__':
+    main()

@@ -1,7 +1,8 @@
 import unittest
 from random import randint, seed
+from typing import Optional
 
-from arduinoctl import ArduinoUno, PinMode, AnalogReference
+from arduinoctl import ArduinoUno, PinMode, AnalogReference, Arduino
 
 seed()
 
@@ -13,11 +14,11 @@ def randbool():
 
 class TestArduinoctl(unittest.TestCase):
     ARDUINO_CLASS = ArduinoUno
-    ARDUINO_TTY = '/dev/ttyACM0'
+    ARDUINO_DEVICE = '/dev/ttyACM0'
     DEBUG = False
 
     def setUp(self):
-        self.arduino = self.ARDUINO_CLASS(self.ARDUINO_TTY, timeout=3)
+        self.arduino = self.ARDUINO_CLASS(device=self.ARDUINO_DEVICE, timeout=3)
         self.arduino.debug = self.DEBUG
         self.arduino.reset()
 
@@ -86,5 +87,18 @@ class TestArduinoctl(unittest.TestCase):
         self.assertListEqual(actual_states, states, 'Actual pin states did not match desired pin states.')
 
 
+def main() -> Optional[unittest.TestProgram]:
+    print('Searching for Arduinos...')
+    ports = Arduino.find_ports()
+    if not ports:
+        print('ERROR: No Arduinos detected.')
+        return None
+
+    port = ports[0]
+    print(f'Using Arduino at {repr(port.device)} (serial_number={repr(port.serial_number)})...')
+    TestArduinoctl.ARDUINO_DEVICE = port.device
+    return unittest.main()
+
+
 if __name__ == '__main__':
-    unittest.main()
+    main()
