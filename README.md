@@ -8,11 +8,11 @@ Control an Arduino with Python.
 
 ### Example
 ```python
-from arduinoctl import ArduinoUno
+from arduinoctl import ArduinoUno, PinMode
 
 with ArduinoUno('/dev/ttyACM0') as arduino:
     # Set pin 2 to be an output
-    arduino.set_pin_mode(2, arduino.PinMode.OUTPUT)
+    arduino.set_pin_mode(2, PinMode.OUTPUT)
     
     # Set pin 2 high
     arduino.digital_write(2, True)
