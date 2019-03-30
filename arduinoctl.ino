@@ -229,6 +229,9 @@ void command_shift_in(const int bit_order) {
     const int clock_pin = read_byte();
     const int byte_cnt  = read_byte() + 1;
 
+    // Set clock pin to be an output (not setting data pin to input because it could be either INPUT or INPUT_PULLUP).
+    pinMode(clock_pin, OUTPUT);
+
     // Send back each byte as it comes in
     for (int i = 0; i < byte_cnt; i++) {
         write_byte(shiftIn(data_pin, clock_pin, bit_order));
@@ -240,6 +243,10 @@ void command_shift_out(const int bit_order) {
     const int data_pin  = read_byte();
     const int clock_pin = read_byte();
     const int byte_cnt  = read_byte() + 1;
+
+    // Set pins to be outputs
+    pinMode(data_pin, OUTPUT);
+    pinMode(clock_pin, OUTPUT);
 
     // Receive all the data first, to prevent buffer overrun
     byte data[byte_cnt] = {};

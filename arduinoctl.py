@@ -467,6 +467,14 @@ class Arduino(ABC):
             self._recv_ack()
 
     def shift_in(self, data_pin: int, clock_pin: int, msb_first: bool, byte_cnt: int = 1) -> bytearray:
+        """
+        Automatically sets the clock_pin to be an output. Does NOT set the data pin, as it may either need to be set as
+        a "regular" input or as a pullup input. You should use the set_pin_mode() method to set the data_pin to your
+        desired input type.
+
+        :return: The bytes that were shifted into the Arduino.
+        """
+
         self._validate_pin(data_pin)
         self._validate_pin(clock_pin)
         if data_pin == clock_pin:
@@ -491,6 +499,8 @@ class Arduino(ABC):
 
     def shift_out(self, data_pin: int, clock_pin: int, msb_first: bool, data: ByteString) -> ByteString:
         """
+        data_pin and clock_pin are automatically set to be outputs.
+
         :return: The same data that was passed in.
         """
         self._validate_pin(data_pin)
