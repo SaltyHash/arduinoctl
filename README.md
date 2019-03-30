@@ -2,7 +2,7 @@
 Control an Arduino with Python.
 
 ### Usage
-1. Use the Arduino IDE to load the `arduinoctl.ino` file into your Arduino.
+1. Use the [Arduino IDE](https://www.arduino.cc/en/main/software) to load the `arduinoctl.ino` file into your Arduino.
 2. In your Python code, import the particular Arduino model you have from the arduinoctl module.
 3. Start using it!
 
